@@ -14,11 +14,17 @@ on:
         required: true
       AWS_ACCOUNT_ID:
         required: true
+    outputs:
+      image_uri:
+        description: 'URI completa de la imagen pusheada'
+        value: ${{ jobs.build.outputs.image_uri }}
 
 jobs:
   build:
     name: Build and Push
     runs-on: ubuntu-latest
+    outputs:
+      image_uri: ${{ steps.build.outputs.image_uri }}
 
     steps:
       - name: Checkout
@@ -36,13 +42,16 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build and Push Docker image
+        id: build
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           TARGET_BRANCH: ${{ github.base_ref }}
           SERVICE: ${{ inputs.service_name }}
           SHA: ${{ github.sha }}
         run: |
-          IMAGE_URI="$ECR_REGISTRY/$TARGET_BRANCH/$SERVICE:$SHA"
+          SHORT_SHA="${SHA::7}"
+          IMAGE_URI="$ECR_REGISTRY/$TARGET_BRANCH/$SERVICE:$SHORT_SHA"
           docker build -t $IMAGE_URI .
           docker push $IMAGE_URI
+          echo "image_uri=$IMAGE_URI" >> $GITHUB_OUTPUT
           echo "✅ Imagen pusheada: $IMAGE_URI"
