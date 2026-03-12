@@ -7,17 +7,42 @@ on:
         description: 'Nombre del servicio'
         required: true
         type: string
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
+      AWS_ACCOUNT_ID:
+        required: true
 
 jobs:
   build:
-    name: Build Docker Image
+    name: Build and Push
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build Docker image
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Login to ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and Push Docker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          TARGET_BRANCH: ${{ github.base_ref }}
+          SERVICE: ${{ inputs.service_name }}
+          SHA: ${{ github.sha }}
         run: |
-          docker build -t ${{ inputs.service_name }}:latest .
-          echo "✅ Imagen ${{ inputs.service_name }}:latest buildeada correctamente"
+          IMAGE_URI="$ECR_REGISTRY/$TARGET_BRANCH/$SERVICE:$SHA"
+          docker build -t $IMAGE_URI .
+          docker push $IMAGE_URI
+          echo "✅ Imagen pusheada: $IMAGE_URI"
