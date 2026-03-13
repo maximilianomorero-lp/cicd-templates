@@ -27,14 +27,6 @@ on:
         description: 'Nombre del container en la task definition'
         required: true
         type: string
-      task_definition:
-        description: 'Nombre de la task definition'
-        required: true
-        type: string
-      container_name:
-        description: 'Nombre del container en la task definition'
-        required: true
-        type: string
     secrets:
       AWS_ACCESS_KEY_ID:
         required: true
