@@ -7,8 +7,12 @@ on:
         description: 'Nombre del servicio'
         required: true
         type: string
-      image_uri:
-        description: 'URI completa de la imagen a deployar'
+      environment:
+        description: 'Ambiente destino (stage o production)'
+        required: true
+        type: string
+      image_tag:
+        description: 'Tag de la imagen (ej: develop-a1b2c3d o main-a1b2c3d)'
         required: true
         type: string
     secrets:
@@ -32,10 +36,35 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
+      - name: Resolve image URI and cluster
+        id: resolve
+        env:
+          ENV: ${{ inputs.environment }}
+          TAG: ${{ inputs.image_tag }}
+          SERVICE: ${{ inputs.service_name }}
+        run: |
+          # El ECR repo se infiere del tag (develop-xxx → develop, main-xxx → main)
+          ECR_REPO=$(echo "$TAG" | cut -d'-' -f1)
+          ACCOUNT="693613560166"
+          REGION="us-east-1"
+
+          IMAGE_URI="$ACCOUNT.dkr.ecr.$REGION.amazonaws.com/$ECR_REPO/$SERVICE:$TAG"
+          CLUSTER="$ENV"
+          TASK_DEF="$ENV-$SERVICE"
+          CONTAINER="$ENV-$SERVICE"
+
+          echo "image_uri=$IMAGE_URI" >> $GITHUB_OUTPUT
+          echo "cluster=$CLUSTER" >> $GITHUB_OUTPUT
+          echo "task_def=$TASK_DEF" >> $GITHUB_OUTPUT
+          echo "container=$CONTAINER" >> $GITHUB_OUTPUT
+
+          echo "📦 Imagen: $IMAGE_URI"
+          echo "🏗️ Cluster: $CLUSTER"
+
       - name: Download task definition
         run: |
           aws ecs describe-task-definition \
-            --task-definition production-${{ inputs.service_name }} \
+            --task-definition ${{ steps.resolve.outputs.task_def }} \
             --query taskDefinition \
             > task-definition.json
 
@@ -44,15 +73,15 @@ jobs:
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
           task-definition: task-definition.json
-          container-name: production-${{ inputs.service_name }}
-          image: ${{ inputs.image_uri }}
+          container-name: ${{ steps.resolve.outputs.container }}
+          image: ${{ steps.resolve.outputs.image_uri }}
 
       - name: Deploy to ECS
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
           task-definition: ${{ steps.task-def.outputs.task-definition }}
-          cluster: production
-          service: production-${{ inputs.service_name }}
+          cluster: ${{ steps.resolve.outputs.cluster }}
+          service: ${{ steps.resolve.outputs.task_def }}
           wait-for-service-stability: true
 
       - name: Notify Slack
@@ -75,7 +104,8 @@ jobs:
                   "type": "section",
                   "fields": [
                     { "type": "mrkdwn", "text": "*Servicio:*\n`${{ inputs.service_name }}`" },
-                    { "type": "mrkdwn", "text": "*Imagen:*\n`${{ inputs.image_uri }}`" },
+                    { "type": "mrkdwn", "text": "*Ambiente:*\n`${{ inputs.environment }}`" },
+                    { "type": "mrkdwn", "text": "*Tag:*\n`${{ inputs.image_tag }}`" },
                     { "type": "mrkdwn", "text": "*Usuario:*\n${{ github.actor }}" },
                     { "type": "mrkdwn", "text": "*Estado:*\n`${{ job.status }}`" }
                   ]
