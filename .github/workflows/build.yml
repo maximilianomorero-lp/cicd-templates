@@ -7,6 +7,10 @@ on:
         description: 'Nombre del servicio'
         required: true
         type: string
+      custom_tag:
+        description: 'Tag personalizado (opcional)'
+        type: string
+        default: ''
     secrets:
       AWS_ACCESS_KEY_ID:
         required: true
@@ -50,7 +54,8 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           SHORT_SHA="${SHA::7}"
-          IMAGE_URI="$ECR_REGISTRY/$TARGET_BRANCH/$SERVICE:$SHORT_SHA"
+          FINAL_TAG="${{ inputs.custom_tag != '' && inputs.custom_tag || '$SHORT_SHA' }}"
+          IMAGE_URI="$ECR_REGISTRY/$TARGET_BRANCH/$SERVICE:$FINAL_TAG"
           docker build -t $IMAGE_URI .
           docker push $IMAGE_URI
           echo "image_uri=$IMAGE_URI" >> $GITHUB_OUTPUT
