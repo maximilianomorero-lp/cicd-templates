@@ -45,7 +45,7 @@ jobs:
         id: build
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          TARGET_BRANCH: ${{ github.base_ref }}
+          TARGET_BRANCH: ${{ github.base_ref || github.ref_name }}
           SERVICE: ${{ inputs.service_name }}
           SHA: ${{ github.sha }}
         run: |
