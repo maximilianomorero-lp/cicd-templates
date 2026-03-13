@@ -1,5 +1,4 @@
 name: CI
-
 on:
   workflow_call:
     inputs:
@@ -17,12 +16,11 @@ jobs:
   ci:
     name: CI Passed
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # requerido por SonarQube para analizar el historial
+          fetch-depth: 0
 
       - name: Build test image
         run: docker build -f Dockerfile.test -t ${{ inputs.service_name }}-test .
@@ -34,7 +32,7 @@ jobs:
           docker rm test-container
 
       - name: Send coverage to SonarQube
-        uses: sonarsource/sonarqube-scan-action@v5
+        uses: sonarsource/sonarqube-scan-action@v6
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
@@ -44,9 +42,6 @@ jobs:
             -Dsonar.projectName=${{ inputs.service_name }}
             -Dsonar.java.binaries=target/classes
             -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
-            -Dsonar.pullrequest.key=${{ github.event.pull_request.number }}
-            -Dsonar.pullrequest.branch=${{ github.head_ref }}
-            -Dsonar.pullrequest.base=${{ github.base_ref }}
 
       - name: Check SonarQube Quality Gate
         uses: sonarsource/sonarqube-quality-gate-action@v1
