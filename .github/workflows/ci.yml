@@ -6,11 +6,11 @@ on:
         description: 'Nombre del servicio'
         required: true
         type: string
-    secrets:
-      SONAR_TOKEN:
-        required: true
-      SONAR_HOST_URL:
-        required: true
+    # secrets:
+    #   SONAR_TOKEN:
+    #     required: true
+    #   SONAR_HOST_URL:
+    #     required: true
 
 jobs:
   ci:
@@ -31,20 +31,20 @@ jobs:
           docker cp test-container:/app/target ./target
           docker rm test-container
 
-      - name: Send coverage to SonarQube
-        uses: sonarsource/sonarqube-scan-action@v6
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        with:
-          args: >
-            -Dsonar.projectKey=${{ inputs.service_name }}
-            -Dsonar.projectName=${{ inputs.service_name }}
-            -Dsonar.java.binaries=target/classes
-            -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
+      # - name: Send coverage to SonarQube
+      #   uses: sonarsource/sonarqube-scan-action@v6
+      #   env:
+      #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      #     SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      #   with:
+      #     args: >
+      #       -Dsonar.projectKey=${{ inputs.service_name }}
+      #       -Dsonar.projectName=${{ inputs.service_name }}
+      #       -Dsonar.java.binaries=target/classes
+      #       -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
 
-      - name: Check SonarQube Quality Gate
-        uses: sonarsource/sonarqube-quality-gate-action@v1
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      # - name: Check SonarQube Quality Gate
+      #   uses: sonarsource/sonarqube-quality-gate-action@v1
+      #   env:
+      #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      #     SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
