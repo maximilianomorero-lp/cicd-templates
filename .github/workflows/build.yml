@@ -12,9 +12,13 @@ on:
         type: string
         default: ''
       custom_tag:
-        description: 'Tag personalizado (opcional)'
+        description: 'Tag personalizado (opcional, por defecto usa BRANCH-SHORT_SHA)'
         type: string
         default: ''
+      push_latest:
+        description: 'Si debe pushear el tag latest'
+        type: boolean
+        default: false
     secrets:
       AWS_ACCESS_KEY_ID:
         required: true
@@ -29,7 +33,7 @@ on:
 
 jobs:
   build:
-    name: Build and Push
+    name: CI Passed
     runs-on: ubuntu-latest
     outputs:
       image_uri: ${{ steps.build.outputs.image_uri }}
@@ -38,14 +42,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      - name: Login to ECR
+      - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
@@ -56,11 +60,24 @@ jobs:
           TARGET_BRANCH: ${{ inputs.ecr_repo != '' && inputs.ecr_repo || github.base_ref || github.ref_name }}
           SERVICE: ${{ inputs.service_name }}
           SHA: ${{ github.sha }}
+          CUSTOM_TAG: ${{ inputs.custom_tag }}
+          PUSH_LATEST: ${{ inputs.push_latest }}
         run: |
           SHORT_SHA="${SHA::7}"
-          FINAL_TAG="${{ inputs.custom_tag != '' && inputs.custom_tag || '$SHORT_SHA' }}"
+          BRANCH_TAG="${TARGET_BRANCH}-${SHORT_SHA}"
+          FINAL_TAG="${CUSTOM_TAG:-$BRANCH_TAG}"
           IMAGE_URI="$ECR_REGISTRY/$TARGET_BRANCH/$SERVICE:$FINAL_TAG"
-          docker build -t $IMAGE_URI .
-          docker push $IMAGE_URI
+
+          docker build -t "$IMAGE_URI" .
+          docker push "$IMAGE_URI"
+
+          # Tag latest si corresponde
+          if [ "$PUSH_LATEST" = "true" ]; then
+            LATEST_URI="$ECR_REGISTRY/$TARGET_BRANCH/$SERVICE:latest"
+            docker tag "$IMAGE_URI" "$LATEST_URI"
+            docker push "$LATEST_URI"
+            echo "✅ Tag latest pusheado: $LATEST_URI"
+          fi
+
           echo "image_uri=$IMAGE_URI" >> $GITHUB_OUTPUT
           echo "✅ Imagen pusheada: $IMAGE_URI"

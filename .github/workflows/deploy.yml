@@ -11,26 +11,12 @@ on:
         description: 'URI completa de la imagen a deployar'
         required: true
         type: string
-      cluster:
-        description: 'Nombre del cluster ECS'
-        required: true
-        type: string
-      ecs_service:
-        description: 'Nombre del servicio ECS'
-        required: true
-        type: string
-      task_definition:
-        description: 'Nombre de la task definition'
-        required: true
-        type: string
-      container_name:
-        description: 'Nombre del container en la task definition'
-        required: true
-        type: string
     secrets:
       AWS_ACCESS_KEY_ID:
         required: true
       AWS_SECRET_ACCESS_KEY:
+        required: true
+      SLACK_WEBHOOK_URL:
         required: true
 
 jobs:
@@ -49,7 +35,7 @@ jobs:
       - name: Download task definition
         run: |
           aws ecs describe-task-definition \
-            --task-definition ${{ inputs.task_definition }} \
+            --task-definition production-${{ inputs.service_name }} \
             --query taskDefinition \
             > task-definition.json
 
@@ -58,13 +44,49 @@ jobs:
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
           task-definition: task-definition.json
-          container-name: ${{ inputs.container_name }}
+          container-name: production-${{ inputs.service_name }}
           image: ${{ inputs.image_uri }}
 
       - name: Deploy to ECS
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
           task-definition: ${{ steps.task-def.outputs.task-definition }}
-          cluster: ${{ inputs.cluster }}
-          service: ${{ inputs.ecs_service }}
+          cluster: production
+          service: production-${{ inputs.service_name }}
           wait-for-service-stability: true
+
+      - name: Notify Slack
+        if: always()
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "${{ job.status == 'success' && '✅ Deploy exitoso' || '❌ Deploy fallido' }}"
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    { "type": "mrkdwn", "text": "*Servicio:*\n`${{ inputs.service_name }}`" },
+                    { "type": "mrkdwn", "text": "*Imagen:*\n`${{ inputs.image_uri }}`" },
+                    { "type": "mrkdwn", "text": "*Usuario:*\n${{ github.actor }}" },
+                    { "type": "mrkdwn", "text": "*Estado:*\n`${{ job.status }}`" }
+                  ]
+                },
+                {
+                  "type": "actions",
+                  "elements": [{
+                    "type": "button",
+                    "text": { "type": "plain_text", "text": "Ver pipeline" },
+                    "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                  }]
+                }
+              ]
+            }
