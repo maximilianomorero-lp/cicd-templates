@@ -19,6 +19,22 @@ on:
         description: 'Nombre del servicio ECS'
         required: true
         type: string
+      task_definition:
+        description: 'Nombre de la task definition'
+        required: true
+        type: string
+      container_name:
+        description: 'Nombre del container en la task definition'
+        required: true
+        type: string
+      task_definition:
+        description: 'Nombre de la task definition'
+        required: true
+        type: string
+      container_name:
+        description: 'Nombre del container en la task definition'
+        required: true
+        type: string
     secrets:
       AWS_ACCESS_KEY_ID:
         required: true
@@ -38,63 +54,25 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      - name: Update ECS Task Definition
+      - name: Download task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition ${{ inputs.task_definition }} \
+            --query taskDefinition \
+            > task-definition.json
+
+      - name: Update image in task definition
         id: task-def
-        env:
-          SERVICE: ${{ inputs.ecs_service }}
-          IMAGE: ${{ inputs.image_uri }}
-        run: |
-          # Obtener task definition actual
-          TASK_FAMILY="$SERVICE"
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: ${{ inputs.container_name }}
+          image: ${{ inputs.image_uri }}
 
-          CURRENT_TASK=$(aws ecs describe-task-definition \
-            --task-definition "$TASK_FAMILY" \
-            --query 'taskDefinition' \
-            --output json)
-
-          # Reemplazar imagen y limpiar campos inmutables
-          NEW_TASK=$(echo "$CURRENT_TASK" | jq \
-            --arg IMAGE "$IMAGE" \
-            '.containerDefinitions[0].image = $IMAGE
-            | del(
-                .taskDefinitionArn,
-                .revision,
-                .status,
-                .requiresAttributes,
-                .placementConstraints,
-                .compatibilities,
-                .registeredAt,
-                .registeredBy
-              )')
-
-          NEW_TASK_ARN=$(aws ecs register-task-definition \
-            --cli-input-json "$NEW_TASK" \
-            --query 'taskDefinition.taskDefinitionArn' \
-            --output text)
-
-          echo "new_task_arn=$NEW_TASK_ARN" >> $GITHUB_OUTPUT
-          echo "✅ Nueva task definition: $NEW_TASK_ARN"
-
-      - name: Deploy to ECS Service
-        env:
-          CLUSTER: ${{ inputs.cluster }}
-          SERVICE: ${{ inputs.ecs_service }}
-          TASK_ARN: ${{ steps.task-def.outputs.new_task_arn }}
-        run: |
-          aws ecs update-service \
-            --cluster "$CLUSTER" \
-            --service "$SERVICE" \
-            --task-definition "$TASK_ARN"
-
-          echo "🚀 Deploy iniciado en $CLUSTER/$SERVICE"
-
-      - name: Wait for stability
-        env:
-          CLUSTER: ${{ inputs.cluster }}
-          SERVICE: ${{ inputs.ecs_service }}
-        run: |
-          echo "⏳ Esperando que ECS estabilice..."
-          aws ecs wait services-stable \
-            --cluster "$CLUSTER" \
-            --services "$SERVICE"
-          echo "✅ Servicio estable"
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          cluster: ${{ inputs.cluster }}
+          service: ${{ inputs.ecs_service }}
+          wait-for-service-stability: true
