@@ -7,6 +7,11 @@ on:
         description: 'Nombre del servicio'
         required: true
         type: string
+    secrets:
+      SONAR_TOKEN:
+        required: true
+      SONAR_HOST_URL:
+        required: true
 
 jobs:
   ci:
@@ -16,9 +21,35 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # requerido por SonarQube para analizar el historial
 
       - name: Build test image
         run: docker build -f Dockerfile.test -t ${{ inputs.service_name }}-test .
 
-      - name: Run tests
-        run: docker run --rm ${{ inputs.service_name }}-test
+      - name: Run tests and extract coverage report
+        run: |
+          docker run --name test-container ${{ inputs.service_name }}-test
+          docker cp test-container:/app/target ./target
+          docker rm test-container
+
+      - name: Send coverage to SonarQube
+        uses: sonarsource/sonarqube-scan-action@v5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.projectKey=${{ inputs.service_name }}
+            -Dsonar.projectName=${{ inputs.service_name }}
+            -Dsonar.java.binaries=target/classes
+            -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
+            -Dsonar.pullrequest.key=${{ github.event.pull_request.number }}
+            -Dsonar.pullrequest.branch=${{ github.head_ref }}
+            -Dsonar.pullrequest.base=${{ github.base_ref }}
+
+      - name: Check SonarQube Quality Gate
+        uses: sonarsource/sonarqube-quality-gate-action@v1
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
