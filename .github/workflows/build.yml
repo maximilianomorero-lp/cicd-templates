@@ -80,4 +80,17 @@ jobs:
           fi
 
           echo "image_uri=$IMAGE_URI" >> $GITHUB_OUTPUT
-          echo "✅ Imagen pusheada: $IMAGE_URI"
+
+      - name: Image Summary
+        run: |
+          echo "## 🐳 Imagen generada" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Campo | Valor |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **URI completa** | \`${{ steps.build.outputs.image_uri }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Tag** | \`$FINAL_TAG\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **ECR repo** | \`$TARGET_BRANCH\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Branch** | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Commit** | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+        env:
+          FINAL_TAG: ${{ steps.build.outputs.image_uri }}
