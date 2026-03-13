@@ -7,6 +7,10 @@ on:
         description: 'Nombre del servicio'
         required: true
         type: string
+      ecr_repo:
+        description: 'Repositorio ECR destino (main o develop). Por defecto usa la rama destino del PR o la rama actual.'
+        type: string
+        default: ''
       custom_tag:
         description: 'Tag personalizado (opcional)'
         type: string
@@ -49,7 +53,7 @@ jobs:
         id: build
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          TARGET_BRANCH: ${{ github.base_ref || github.ref_name }}
+          TARGET_BRANCH: ${{ inputs.ecr_repo != '' && inputs.ecr_repo || github.base_ref || github.ref_name }}
           SERVICE: ${{ inputs.service_name }}
           SHA: ${{ github.sha }}
         run: |
