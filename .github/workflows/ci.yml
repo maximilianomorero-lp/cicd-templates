@@ -10,7 +10,7 @@ on:
 
 jobs:
   ci:
-    name: Tests
+    name: CI Passed
     runs-on: ubuntu-latest
 
     steps:
