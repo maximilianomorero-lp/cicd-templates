@@ -30,6 +30,9 @@ on:
       image_uri:
         description: 'URI completa de la imagen pusheada'
         value: ${{ jobs.build.outputs.image_uri }}
+      image_tag:
+        description: 'Tag de la imagen pusheada'
+        value: ${{ jobs.build.outputs.image_tag }}
 
 jobs:
   build:
@@ -37,6 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       image_uri: ${{ steps.build.outputs.image_uri }}
+      image_tag: ${{ steps.build.outputs.image_tag }}
 
     steps:
       - name: Checkout
@@ -80,6 +84,7 @@ jobs:
           fi
 
           echo "image_uri=$IMAGE_URI" >> $GITHUB_OUTPUT
+          echo "image_tag=$FINAL_TAG" >> $GITHUB_OUTPUT
 
       - name: Image Summary
         run: |
