@@ -1,0 +1,173 @@
+name: Claude PR Review
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        description: 'Número del Pull Request'
+        required: true
+        type: number
+      base_ref:
+        description: 'Rama base del PR (ej: main, develop)'
+        required: true
+        type: string
+      language:
+        description: 'Idioma de la revisión: es (español) o en (inglés)'
+        required: false
+        type: string
+        default: 'es'
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: true
+
+jobs:
+  claude-review:
+    name: Claude Code Review
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR diff
+        id: diff
+        run: |
+          git fetch origin ${{ inputs.base_ref }}
+          git diff origin/${{ inputs.base_ref }}...HEAD > pr_diff.txt
+          DIFF_SIZE=$(wc -c < pr_diff.txt)
+          echo "diff_size=$DIFF_SIZE" >> $GITHUB_OUTPUT
+          echo "📊 Tamaño del diff: $DIFF_SIZE bytes"
+
+      - name: Claude Code Review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          REPO: ${{ github.repository }}
+          LANGUAGE: ${{ inputs.language }}
+          SERVER_URL: ${{ github.server_url }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          python3 << 'PYEOF'
+          import os, json, sys
+          import urllib.request, urllib.error
+
+          diff = open('pr_diff.txt').read()
+
+          if not diff.strip():
+              print("Sin cambios en el diff, saltando revisión.")
+              sys.exit(0)
+
+          # Truncar si supera el límite de contexto
+          MAX_CHARS = 60000
+          if len(diff) > MAX_CHARS:
+              diff = diff[:MAX_CHARS] + "\n\n[... diff truncado por tamaño ...]"
+
+          lang = os.environ.get('LANGUAGE', 'es')
+
+          if lang == 'es':
+              prompt = (
+                  "Eres un experto en revisión de código. Analiza el siguiente diff de Pull Request "
+                  "y proporciona retroalimentación constructiva en español.\n\n"
+                  "Enfócate en:\n"
+                  "- 🐛 Bugs potenciales o errores lógicos\n"
+                  "- 🔒 Problemas de seguridad\n"
+                  "- ⚡ Problemas de rendimiento\n"
+                  "- 📐 Calidad del código y mejores prácticas\n"
+                  "- 📖 Legibilidad y mantenibilidad\n"
+                  "- 🧪 Cobertura de casos extremos\n\n"
+                  "Si el código está correcto, dilo también. Sé específico y constructivo. "
+                  "Incluye ejemplos de código mejorado cuando sea relevante.\n\n"
+                  "Diff del PR:\n```diff\n" + diff + "\n```\n\n"
+                  "Responde en formato Markdown."
+              )
+          else:
+              prompt = (
+                  "You are an expert code reviewer. Analyze the following Pull Request diff "
+                  "and provide constructive feedback.\n\n"
+                  "Focus on:\n"
+                  "- 🐛 Potential bugs or logic errors\n"
+                  "- 🔒 Security issues\n"
+                  "- ⚡ Performance problems\n"
+                  "- 📐 Code quality and best practices\n"
+                  "- 📖 Readability and maintainability\n"
+                  "- 🧪 Edge case coverage\n\n"
+                  "If the code is correct, say so. Be specific and constructive. "
+                  "Include improved code examples when relevant.\n\n"
+                  "PR Diff:\n```diff\n" + diff + "\n```\n\n"
+                  "Respond in Markdown format."
+              )
+
+          # Llamar a la API de Claude
+          body = json.dumps({
+              "model": "claude-sonnet-4-6",
+              "max_tokens": 4096,
+              "messages": [{"role": "user", "content": prompt}]
+          }).encode()
+
+          req = urllib.request.Request(
+              "https://api.anthropic.com/v1/messages",
+              data=body,
+              headers={
+                  "Content-Type": "application/json",
+                  "x-api-key": os.environ["ANTHROPIC_API_KEY"],
+                  "anthropic-version": "2023-06-01"
+              }
+          )
+
+          try:
+              with urllib.request.urlopen(req) as r:
+                  review = json.loads(r.read())["content"][0]["text"]
+          except urllib.error.HTTPError as e:
+              print(f"Error Claude API: {e.code} - {e.read().decode()}")
+              sys.exit(1)
+
+          # Publicar comentario en el PR
+          server  = os.environ["SERVER_URL"]
+          repo    = os.environ["REPO"]
+          run_id  = os.environ["RUN_ID"]
+          pr      = os.environ["PR_NUMBER"]
+
+          pipeline_url = f"{server}/{repo}/actions/runs/{run_id}"
+          comment = (
+              "## 🤖 Revisión de Claude\n\n"
+              + review
+              + f"\n\n---\n*Revisión automática por [Claude](https://claude.ai) · "
+              + f"[Ver pipeline]({pipeline_url})*"
+          )
+
+          gh_req = urllib.request.Request(
+              f"https://api.github.com/repos/{repo}/issues/{pr}/comments",
+              data=json.dumps({"body": comment}).encode(),
+              headers={
+                  "Content-Type": "application/json",
+                  "Authorization": f"token {os.environ['GITHUB_TOKEN']}",
+                  "Accept": "application/vnd.github.v3+json"
+              }
+          )
+
+          try:
+              with urllib.request.urlopen(gh_req) as r:
+                  result = json.loads(r.read())
+                  print(f"✅ Comentario publicado: {result['html_url']}")
+          except urllib.error.HTTPError as e:
+              print(f"Error publicando comentario: {e.code} - {e.read().decode()}")
+              sys.exit(1)
+          PYEOF
+
+      - name: Review Summary
+        if: always()
+        run: |
+          echo "## 🤖 Claude PR Review" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Campo | Valor |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **PR** | #${{ inputs.pr_number }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Rama base** | \`${{ inputs.base_ref }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Idioma** | \`${{ inputs.language }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Tamaño diff** | \`${{ steps.diff.outputs.diff_size }} bytes\` |" >> $GITHUB_STEP_SUMMARY
